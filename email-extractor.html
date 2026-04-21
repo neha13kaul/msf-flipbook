@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Outlook Inbox → Excel Exporter</title>
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f4f6f9;
+      color: #1a1a2e;
+      line-height: 1.6;
+    }
+
+    header {
+      background: #0f4c81;
+      color: #fff;
+      padding: 36px 40px 28px;
+    }
+    header h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 6px; }
+    header p  { opacity: .8; font-size: .97rem; max-width: 640px; }
+
+    .badge {
+      display: inline-block;
+      background: rgba(255,255,255,.15);
+      border: 1px solid rgba(255,255,255,.3);
+      border-radius: 20px;
+      padding: 3px 12px;
+      font-size: .78rem;
+      margin-bottom: 14px;
+      letter-spacing: .04em;
+    }
+
+    main { max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; }
+
+    /* ── Columns card ─────────────────────────────────────── */
+    .columns-card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 24px 28px;
+      margin-bottom: 36px;
+    }
+    .columns-card h2 { font-size: 1rem; font-weight: 700; margin-bottom: 14px; color: #0f4c81; }
+    .col-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 8px;
+    }
+    .col-chip {
+      background: #eef4fb;
+      border: 1px solid #c3d9f0;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: .85rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .col-chip .dot { width: 7px; height: 7px; border-radius: 50%; background: #0f4c81; flex-shrink: 0; }
+
+    /* ── Steps ────────────────────────────────────────────── */
+    .step {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+    .step-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      padding: 22px 28px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .step-header:hover { background: #fafbfc; }
+    .step-num {
+      width: 34px; height: 34px; border-radius: 50%;
+      background: #0f4c81; color: #fff;
+      font-weight: 700; font-size: .95rem;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-top: 1px;
+    }
+    .step-title h3 { font-size: 1.05rem; font-weight: 700; }
+    .step-title p  { font-size: .88rem; color: #64748b; margin-top: 3px; }
+    .step-arrow { margin-left: auto; color: #94a3b8; font-size: 1.2rem; transition: transform .2s; flex-shrink: 0; margin-top: 6px; }
+    .step.open .step-arrow { transform: rotate(180deg); }
+
+    .step-body { display: none; padding: 0 28px 26px; border-top: 1px solid #f1f5f9; }
+    .step.open .step-body { display: block; }
+
+    /* ── Template download ────────────────────────────────── */
+    .download-zone {
+      text-align: center;
+      padding: 30px;
+      border: 2px dashed #c3d9f0;
+      border-radius: 10px;
+      background: #f8fbff;
+      margin-top: 18px;
+    }
+    .download-zone p { color: #475569; font-size: .9rem; margin-bottom: 18px; }
+    #downloadBtn {
+      background: #0f4c81;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 13px 32px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      transition: background .15s;
+    }
+    #downloadBtn:hover { background: #0d3f6d; }
+    #downloadBtn:active { background: #0a3259; }
+
+    .note {
+      background: #fffbeb;
+      border-left: 4px solid #f59e0b;
+      padding: 10px 14px;
+      border-radius: 0 6px 6px 0;
+      font-size: .86rem;
+      margin-top: 16px;
+      color: #78350f;
+    }
+    .note strong { font-weight: 700; }
+
+    .info {
+      background: #eff6ff;
+      border-left: 4px solid #3b82f6;
+      padding: 10px 14px;
+      border-radius: 0 6px 6px 0;
+      font-size: .86rem;
+      margin-top: 16px;
+      color: #1e3a5f;
+    }
+
+    /* ── Substeps ─────────────────────────────────────────── */
+    ol.substeps { padding-left: 22px; margin-top: 14px; }
+    ol.substeps li { margin-bottom: 10px; font-size: .92rem; }
+    ol.substeps li strong { color: #0f4c81; }
+
+    /* ── Code / expression blocks ─────────────────────────── */
+    .expr-block {
+      background: #1e293b;
+      color: #e2e8f0;
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+      font-size: .82rem;
+      line-height: 1.6;
+      position: relative;
+      margin: 10px 0;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .copy-btn {
+      position: absolute;
+      top: 8px; right: 8px;
+      background: rgba(255,255,255,.12);
+      border: none;
+      color: #cbd5e1;
+      border-radius: 5px;
+      padding: 4px 10px;
+      font-size: .75rem;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .copy-btn:hover { background: rgba(255,255,255,.22); }
+    .copy-btn.copied { color: #4ade80; }
+
+    /* ── Action table ─────────────────────────────────────── */
+    .action-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .87rem;
+      margin-top: 14px;
+    }
+    .action-table th {
+      background: #f1f5f9;
+      text-align: left;
+      padding: 9px 12px;
+      font-weight: 700;
+      border-bottom: 2px solid #e2e8f0;
+      color: #334155;
+    }
+    .action-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: top;
+    }
+    .action-table tr:last-child td { border-bottom: none; }
+    .action-table td:first-child { font-weight: 600; color: #475569; white-space: nowrap; }
+    .action-table code {
+      background: #f1f5f9;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: .82rem;
+      color: #0f4c81;
+    }
+
+    /* ── Expr label ───────────────────────────────────────── */
+    .expr-label {
+      font-size: .8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: #64748b;
+      margin-top: 18px;
+      margin-bottom: 4px;
+    }
+
+    /* ── Column mapping table ─────────────────────────────── */
+    .map-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .86rem;
+      margin-top: 16px;
+    }
+    .map-table th {
+      background: #0f4c81;
+      color: #fff;
+      padding: 9px 12px;
+      text-align: left;
+      font-weight: 600;
+    }
+    .map-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid #e2e8f0;
+      vertical-align: top;
+    }
+    .map-table tr:last-child td { border-bottom: none; }
+    .map-table tr:nth-child(even) td { background: #f8fafc; }
+    .map-table td:first-child { font-weight: 600; color: #1e293b; }
+
+    h4 { font-size: .95rem; font-weight: 700; margin-top: 22px; margin-bottom: 6px; color: #1e293b; }
+    p.body-text { font-size: .91rem; color: #475569; margin-top: 10px; }
+
+    /* ── Success banner ───────────────────────────────────── */
+    #successBanner {
+      display: none;
+      background: #dcfce7;
+      border: 1px solid #86efac;
+      border-radius: 8px;
+      padding: 12px 18px;
+      color: #166534;
+      font-size: .9rem;
+      margin-top: 14px;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="badge">Power Automate · Microsoft 365</div>
+  <h1>Outlook Inbox → Excel Exporter</h1>
+  <p>Extract sender details, recipients, company, signature, and more from your Outlook inbox into a downloadable Excel file — no coding required.</p>
+</header>
+
+<main>
+
+  <!-- Columns preview -->
+  <div class="columns-card">
+    <h2>What gets exported</h2>
+    <div class="col-grid">
+      <div class="col-chip"><span class="dot"></span>Sender Name</div>
+      <div class="col-chip"><span class="dot"></span>Sender Email</div>
+      <div class="col-chip"><span class="dot"></span>Date / Time</div>
+      <div class="col-chip"><span class="dot"></span>Subject</div>
+      <div class="col-chip"><span class="dot"></span>Company</div>
+      <div class="col-chip"><span class="dot"></span>Signature Text</div>
+      <div class="col-chip"><span class="dot"></span>Other Recipients</div>
+      <div class="col-chip"><span class="dot"></span>Has Attachments</div>
+      <div class="col-chip"><span class="dot"></span>Email Preview</div>
+    </div>
+  </div>
+
+  <!-- STEP 1 -->
+  <div class="step open" id="step1">
+    <div class="step-header" onclick="toggleStep('step1')">
+      <div class="step-num">1</div>
+      <div class="step-title">
+        <h3>Download the Excel Template</h3>
+        <p>Creates a pre-formatted .xlsx file with the correct table structure for Power Automate</p>
+      </div>
+      <span class="step-arrow">▼</span>
+    </div>
+    <div class="step-body">
+      <div class="download-zone">
+        <p>Click below to generate and download <strong>EmailExport.xlsx</strong> — it contains an empty table with all 9 columns pre-configured and named <code style="background:#e2e8f0;padding:2px 6px;border-radius:4px;font-size:.85rem">EmailData</code>.</p>
+        <button id="downloadBtn" onclick="generateTemplate()">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Download EmailExport.xlsx
+        </button>
+        <div id="successBanner">✓ Template downloaded — check your Downloads folder.</div>
+      </div>
+      <div class="note"><strong>Important:</strong> After downloading, open the file in Excel, click anywhere in the header row, then press <strong>Ctrl+T</strong> (or Format as Table) and make sure "My table has headers" is checked. Rename the table to <strong>EmailData</strong> in the Table Design tab. Then save and upload to OneDrive.</div>
+    </div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div class="step" id="step2">
+    <div class="step-header" onclick="toggleStep('step2')">
+      <div class="step-num">2</div>
+      <div class="step-title">
+        <h3>Upload Template to OneDrive</h3>
+        <p>Power Automate needs the file in OneDrive or SharePoint to write rows into it</p>
+      </div>
+      <span class="step-arrow">▼</span>
+    </div>
+    <div class="step-body">
+      <ol class="substeps">
+        <li>Go to <strong>onedrive.live.com</strong> (or your organization's OneDrive) and sign in.</li>
+        <li>Upload <strong>EmailExport.xlsx</strong> to the root of your OneDrive (or a folder — note the path).</li>
+        <li>Leave the file closed. Power Automate cannot write to a file that's open in Excel.</li>
+      </ol>
+      <div class="info">The flow will append one row per email directly into the table. After the flow runs, open the file from OneDrive and download it.</div>
+    </div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div class="step" id="step3">
+    <div class="step-header" onclick="toggleStep('step3')">
+      <div class="step-num">3</div>
+      <div class="step-title">
+        <h3>Create the Power Automate Flow</h3>
+        <p>Build a manual-trigger flow that reads your inbox and populates the Excel table</p>
+      </div>
+      <span class="step-arrow">▼</span>
+    </div>
+    <div class="step-body">
+
+      <h4>Create the flow</h4>
+      <ol class="substeps">
+        <li>Go to <strong>make.powerautomate.com</strong> and sign in with your Microsoft account.</li>
+        <li>Click <strong>+ Create</strong> → <strong>Instant cloud flow</strong>.</li>
+        <li>Name it <em>"Inbox to Excel"</em>, choose trigger <strong>Manually trigger a flow</strong>, click <strong>Create</strong>.</li>
+      </ol>
+
+      <h4>Action 1 — Get emails from Inbox</h4>
+      <p class="body-text">Click <strong>+ New step</strong>, search for <strong>Office 365 Outlook</strong>, select action <strong>Get emails (V3)</strong>. Configure:</p>
+      <table class="action-table">
+        <thead><tr><th>Setting</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Folder</td><td><code>Inbox</code></td></tr>
+          <tr><td>Fetch Only Unread Messages</td><td><code>No</code></td></tr>
+          <tr><td>Include Attachments</td><td><code>No</code> (faster)</td></tr>
+          <tr><td>Top</td><td><code>500</code> — or however many you want (max 999)</td></tr>
+          <tr><td>Order By</td><td><code>DateTimeReceived desc</code></td></tr>
+          <tr><td>Search Query</td><td>Leave blank for all, or enter a date range like <code>received&gt;=01/01/2025</code></td></tr>
+        </tbody>
+      </table>
+
+      <h4>Action 2 — Loop over each email</h4>
+      <p class="body-text">Click <strong>+ New step</strong>, search for <strong>Apply to each</strong>. In the <em>Select an output from previous steps</em> field, pick the dynamic content value <strong>value</strong> from the Get emails step.</p>
+
+      <h4>Actions 3–11 — Compose each field (inside the loop)</h4>
+      <p class="body-text">Inside the <em>Apply to each</em> loop, add a <strong>Compose</strong> action for each field below. Name each Compose action using the column name (e.g. <em>Compose – Sender Name</em>) so it's easy to map later.</p>
+
+      <div class="expr-label">Sender Name</div>
+      <div class="expr-block" id="expr-senderName">if(contains(items('Apply_to_each')?['From'], '&lt;'),
+  trim(substring(items('Apply_to_each')?['From'], 0,
+    indexOf(items('Apply_to_each')?['From'], '&lt;'))),
+  items('Apply_to_each')?['From'])<button class="copy-btn" onclick="copyExpr('expr-senderName', this)">Copy</button></div>
+
+      <div class="expr-label">Sender Email</div>
+      <div class="expr-block" id="expr-senderEmail">if(contains(items('Apply_to_each')?['From'], '&lt;'),
+  substring(items('Apply_to_each')?['From'],
+    add(indexOf(items('Apply_to_each')?['From'], '&lt;'), 1),
+    sub(sub(length(items('Apply_to_each')?['From']), 1),
+        add(indexOf(items('Apply_to_each')?['From'], '&lt;'), 1))),
+  items('Apply_to_each')?['From'])<button class="copy-btn" onclick="copyExpr('expr-senderEmail', this)">Copy</button></div>
+
+      <div class="expr-label">Date / Time (converted to your local timezone — change "Eastern Standard Time" if needed)</div>
+      <div class="expr-block" id="expr-date">convertFromUtc(items('Apply_to_each')?['DateTimeReceived'],
+  'Eastern Standard Time', 'MM/dd/yyyy HH:mm')<button class="copy-btn" onclick="copyExpr('expr-date', this)">Copy</button></div>
+
+      <div class="expr-label">Subject</div>
+      <div class="expr-block" id="expr-subject">items('Apply_to_each')?['Subject']<button class="copy-btn" onclick="copyExpr('expr-subject', this)">Copy</button></div>
+
+      <div class="expr-label">Company (extracts domain root — e.g. "microsoft" from @microsoft.com)</div>
+      <div class="expr-block" id="expr-company">first(split(
+  last(split(
+    if(contains(items('Apply_to_each')?['From'], '&lt;'),
+      substring(items('Apply_to_each')?['From'],
+        add(indexOf(items('Apply_to_each')?['From'], '&lt;'), 1),
+        sub(sub(length(items('Apply_to_each')?['From']), 1),
+            add(indexOf(items('Apply_to_each')?['From'], '&lt;'), 1))),
+      items('Apply_to_each')?['From']),
+    '@')),
+  '.'))<button class="copy-btn" onclick="copyExpr('expr-company', this)">Copy</button></div>
+
+      <div class="note" style="margin-top:8px"><strong>Note:</strong> The Company expression returns the root domain name (e.g. "microsoft", "salesforce"). Personal email providers (gmail, yahoo, hotmail, outlook, icloud, live) will show those domain names — you can filter them out in Excel after export using a column filter.</div>
+
+      <div class="expr-label">Signature Text (approximation from the last 300 characters of the body preview)</div>
+      <div class="expr-block" id="expr-sig">if(greater(length(items('Apply_to_each')?['BodyPreview']), 100),
+  substring(items('Apply_to_each')?['BodyPreview'],
+    sub(length(items('Apply_to_each')?['BodyPreview']),
+        min(300, length(items('Apply_to_each')?['BodyPreview']))),
+    min(300, length(items('Apply_to_each')?['BodyPreview']))),
+  '')<button class="copy-btn" onclick="copyExpr('expr-sig', this)">Copy</button></div>
+
+      <div class="note" style="margin-top:8px"><strong>Note:</strong> Power Automate's body preview is limited to 255 characters. For true signature extraction from the full HTML body, add a separate <strong>Get email (V2)</strong> action inside the loop (using the message ID), then use <code>items('Apply_to_each')?['Id']</code> as the Message ID. The full body content will be available as <code>Body/Content</code>. This doubles the API calls so it's slower.</div>
+
+      <div class="expr-label">Other Recipients (To + CC, excluding yourself)</div>
+      <div class="expr-block" id="expr-recips">concat(
+  items('Apply_to_each')?['To'],
+  if(empty(items('Apply_to_each')?['Cc']),
+    '',
+    concat('; ', items('Apply_to_each')?['Cc'])))<button class="copy-btn" onclick="copyExpr('expr-recips', this)">Copy</button></div>
+
+      <div class="expr-label">Has Attachments</div>
+      <div class="expr-block" id="expr-attach">if(items('Apply_to_each')?['HasAttachment'], 'Yes', 'No')<button class="copy-btn" onclick="copyExpr('expr-attach', this)">Copy</button></div>
+
+      <div class="expr-label">Email Preview (first 200 characters of body)</div>
+      <div class="expr-block" id="expr-preview">substring(items('Apply_to_each')?['BodyPreview'], 0,
+  min(200, length(items('Apply_to_each')?['BodyPreview'])))<button class="copy-btn" onclick="copyExpr('expr-preview', this)">Copy</button></div>
+
+      <h4>Action 12 — Add a row to the Excel table</h4>
+      <p class="body-text">Still inside the loop, click <strong>+ Add an action</strong>, search for <strong>Excel Online (Business)</strong>, select <strong>Add a row into a table</strong>. Configure:</p>
+      <table class="action-table">
+        <thead><tr><th>Setting</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Location</td><td><code>OneDrive for Business</code></td></tr>
+          <tr><td>Document Library</td><td><code>OneDrive</code></td></tr>
+          <tr><td>File</td><td>Browse to <code>EmailExport.xlsx</code></td></tr>
+          <tr><td>Table</td><td><code>EmailData</code></td></tr>
+        </tbody>
+      </table>
+
+      <p class="body-text" style="margin-top:14px">Then map each column to its corresponding Compose output:</p>
+      <table class="map-table">
+        <thead><tr><th>Excel Column</th><th>Value (Outputs of the Compose action)</th></tr></thead>
+        <tbody>
+          <tr><td>Sender Name</td><td>Outputs of <em>Compose – Sender Name</em></td></tr>
+          <tr><td>Sender Email</td><td>Outputs of <em>Compose – Sender Email</em></td></tr>
+          <tr><td>Date/Time</td><td>Outputs of <em>Compose – Date/Time</em></td></tr>
+          <tr><td>Subject</td><td>Outputs of <em>Compose – Subject</em></td></tr>
+          <tr><td>Company</td><td>Outputs of <em>Compose – Company</em></td></tr>
+          <tr><td>Signature Text</td><td>Outputs of <em>Compose – Signature Text</em></td></tr>
+          <tr><td>Other Recipients</td><td>Outputs of <em>Compose – Other Recipients</em></td></tr>
+          <tr><td>Has Attachments</td><td>Outputs of <em>Compose – Has Attachments</em></td></tr>
+          <tr><td>Email Preview</td><td>Outputs of <em>Compose – Email Preview</em></td></tr>
+        </tbody>
+      </table>
+
+      <h4>Save the flow</h4>
+      <p class="body-text">Click <strong>Save</strong> in the top-right corner. Power Automate will validate the flow — fix any red errors before proceeding.</p>
+    </div>
+  </div>
+
+  <!-- STEP 4 -->
+  <div class="step" id="step4">
+    <div class="step-header" onclick="toggleStep('step4')">
+      <div class="step-num">4</div>
+      <div class="step-title">
+        <h3>Run the Flow &amp; Download Your Excel File</h3>
+        <p>Trigger the flow, wait for it to complete, then download from OneDrive</p>
+      </div>
+      <span class="step-arrow">▼</span>
+    </div>
+    <div class="step-body">
+      <ol class="substeps">
+        <li>On the flow detail page, click <strong>Run</strong> → <strong>Run flow</strong> → <strong>Done</strong>.</li>
+        <li>Watch the run history at the bottom of the page. For 500 emails, the flow typically takes <strong>3–8 minutes</strong>.</li>
+        <li>Once the status shows <strong>Succeeded</strong>, go to OneDrive and open <strong>EmailExport.xlsx</strong>.</li>
+        <li>Click <strong>Download</strong> to save it locally, or open it directly in Excel Online.</li>
+      </ol>
+      <div class="info"><strong>To re-run later:</strong> Clear the existing rows in the EmailData table first (select all data rows in Excel → Delete rows), then trigger the flow again. Or create a new copy of the template for each export.</div>
+      <div class="note"><strong>Rate limits:</strong> Power Automate throttles Office 365 connector calls. If your flow fails mid-way with a "429 Too Many Requests" error, add a <strong>Delay</strong> action (1–2 seconds) inside the loop, or reduce the number of emails fetched. M365 Business plans have higher limits than personal plans.</div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  function toggleStep(id) {
+    const el = document.getElementById(id);
+    el.classList.toggle('open');
+  }
+
+  function generateTemplate() {
+    const cols = [
+      'Sender Name',
+      'Sender Email',
+      'Date/Time',
+      'Subject',
+      'Company',
+      'Signature Text',
+      'Other Recipients',
+      'Has Attachments',
+      'Email Preview'
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet([cols]);
+
+    ws['!cols'] = [
+      { wch: 25 }, { wch: 35 }, { wch: 20 }, { wch: 55 },
+      { wch: 25 }, { wch: 50 }, { wch: 55 }, { wch: 16 }, { wch: 55 }
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'EmailData');
+
+    try {
+      XLSX.writeFile(wb, 'EmailExport.xlsx');
+      const banner = document.getElementById('successBanner');
+      banner.style.display = 'block';
+      setTimeout(() => { banner.style.display = 'none'; }, 5000);
+    } catch (e) {
+      alert('Download failed: ' + e.message + '\n\nTry right-clicking and opening this page in a different browser.');
+    }
+  }
+
+  function copyExpr(blockId, btn) {
+    const block = document.getElementById(blockId);
+    // Get text content, stripping the Copy button text
+    const text = block.childNodes[0].textContent.trim();
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = 'Copy';
+        btn.classList.remove('copied');
+      }, 2000);
+    }).catch(() => {
+      // Fallback for file:// origins that block clipboard API
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = 'Copy';
+        btn.classList.remove('copied');
+      }, 2000);
+    });
+  }
+</script>
+
+</body>
+</html>
